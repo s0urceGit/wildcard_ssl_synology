@@ -8,10 +8,10 @@
 # Synology DSM
 # Optional: AdGuard Home in Docker / Container Manager
 #
-# Версия: 1.0
+# Версия: 1.1
 # ============================================================
 
-ACME_HOME="$HOME/.acme.sh"
+ACME_HOME="/root/.acme.sh"
 ACME="$ACME_HOME/acme.sh"
 
 # ============================================================
@@ -44,7 +44,7 @@ error() {
 }
 
 # ============================================================
-# Проверка запуска от root
+# Проверка root
 # ============================================================
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -55,6 +55,17 @@ if [ "$(id -u)" -ne 0 ]; then
     echo
     exit 1
 fi
+
+# ============================================================
+# Проверка необходимых команд
+# ============================================================
+
+for CMD in curl sed grep awk; do
+    if ! command -v "$CMD" >/dev/null 2>&1; then
+        error "Не найдена необходимая команда: $CMD"
+        exit 1
+    fi
+done
 
 # ============================================================
 # Header
@@ -70,7 +81,7 @@ echo
 # Домен
 # ============================================================
 
-read -r -p "Введите домен (например: tkv.su): " DOMAIN
+read -r -p "Введите домен (например: example.com): " DOMAIN
 
 if [ -z "$DOMAIN" ]; then
     error "Домен не указан."
@@ -87,26 +98,31 @@ DOMAIN="${DOMAIN%%/*}"
 # Убираем завершающую точку
 DOMAIN="${DOMAIN%.}"
 
-# Если введён *.domain
+# Если введён *.example.com
 if [[ "$DOMAIN" == \*.* ]]; then
     DOMAIN="${DOMAIN#*.}"
 fi
 
-# Если введён www.domain
+# Если введён www.example.com
 if [[ "$DOMAIN" == www.* ]]; then
     DOMAIN="${DOMAIN#www.}"
 fi
-
-WILDCARD_DOMAIN="*.$DOMAIN"
 
 # ============================================================
 # Проверка домена
 # ============================================================
 
-if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$ ]]; then
+if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
     error "Некорректный домен: $DOMAIN"
     exit 1
 fi
+
+if [[ "$DOMAIN" == *..* ]]; then
+    error "Домен содержит две точки подряд: $DOMAIN"
+    exit 1
+fi
+
+WILDCARD_DOMAIN="*.$DOMAIN"
 
 echo
 echo "============================================================"
@@ -171,8 +187,7 @@ case "$PROVIDER" in
         read -r -s -p "Пароль Reg.ru: " REGRU_API_Password
         echo
 
-        if [ -z "$REGRU_API_Username" ] ||
-           [ -z "$REGRU_API_Password" ]; then
+        if [ -z "$REGRU_API_Username" ] || [ -z "$REGRU_API_Password" ]; then
             error "Логин или пароль Reg.ru не указан."
             exit 1
         fi
@@ -231,8 +246,7 @@ case "$PROVIDER" in
         read -r -s -p "Пароль Beget: " Beget_Password
         echo
 
-        if [ -z "$Beget_Username" ] ||
-           [ -z "$Beget_Password" ]; then
+        if [ -z "$Beget_Username" ] || [ -z "$Beget_Password" ]; then
             error "Логин или пароль Beget не указан."
             exit 1
         fi
@@ -433,7 +447,9 @@ else
     DOCKER_BIN=""
 
     if command -v docker >/dev/null 2>&1; then
+
         DOCKER_BIN="$(command -v docker)"
+
     else
 
         POSSIBLE_DOCKER_PATHS=(
@@ -549,8 +565,8 @@ if [ ! -f "$ACME" ]; then
     info "acme.sh не найден."
     info "Устанавливаем acme.sh..."
 
-    cd "$HOME" || {
-        error "Не удалось перейти в HOME."
+    cd /root || {
+        error "Не удалось перейти в /root."
         exit 1
     }
 
@@ -575,9 +591,7 @@ ok "acme.sh найден."
 
 info "Выбираем Let's Encrypt..."
 
-"$ACME" --set-default-ca --server letsencrypt
-
-if [ $? -ne 0 ]; then
+if ! "$ACME" --set-default-ca --server letsencrypt; then
     error "Не удалось выбрать Let's Encrypt."
     exit 1
 fi
